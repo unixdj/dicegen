@@ -1,4 +1,4 @@
-// Copyright 2001 Vadim Vygonets.  No rights reserved.
+// Copyright 2012 Vadim Vygonets
 // This program is free software.  It comes without any warranty, to
 // the extent permitted by applicable law.  You can redistribute it
 // and/or modify it under the terms of the Do What The Fuck You Want
@@ -43,12 +43,19 @@ func getBits(n uint) uint64 {
 	return res
 }
 
+// password generator engine
 type engine struct {
-	bits uint
-	dlen int
-	sep  string
-	gets func(n uint64) string
+	bits uint                // bits of randomness needed per token
+	dlen int                 // default password length in tokens
+	sep  string              // separator
+	gets func(uint64) string // convert random number into token
 }
+
+const (
+	diceware8kEngine = iota
+	base64Engine
+	hexEngine
+)
 
 var b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 var engines = []engine{
@@ -57,48 +64,50 @@ var engines = []engine{
 	{4, 16, "", func(n uint64) string { return "0123456789abcdef"[n : n+1] }},
 }
 
-func parseFlags() (*engine, int) {
+func parseFlags() (e *engine, t int) {
 	var (
 		b = flag.Bool("b", false, "select base64 passwords")
 		h = flag.Bool("h", false, "select hex passwords")
-		e = &engines[0]
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr,
-			"diceware2k/base64/hex passphrase generator\n"+
-				"Usage: %s [-b|-h] [n]\n", os.Args[0])
+			"diceware8k/base64/hex passphrase generator\n"+
+				"Usage: %s [-b|-h] [N]\n", os.Args[0])
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "  n: password length (default: 5 words (diceware8k) or 16 characters (the rest))\n")
+		fmt.Fprintf(os.Stderr,
+			"  N: password length; default: 5 words for "+
+				"diceware8k, otherwise 16 characters\n")
 	}
 	flag.Parse()
-	if *b {
-		if *h {
-			fmt.Fprintf(os.Stderr, "-b or -h don't mix\n")
-			flag.Usage()
-			os.Exit(2)
-		}
-		e = &engines[1]
-	} else if *h {
-		e = &engines[2]
+	switch {
+	case *b && *h:
+		fmt.Fprintf(os.Stderr, "-b and -h are mutually exclusive\n")
+		flag.Usage()
+		os.Exit(2)
+	case *b:
+		e = &engines[base64Engine]
+	case *h:
+		e = &engines[hexEngine]
+	default:
+		e = &engines[diceware8kEngine]
 	}
-	t := e.dlen
 	switch flag.NArg() {
 	case 0:
+		t = e.dlen
 	case 1:
 		s := flag.Arg(0)
-		x, err := strconv.ParseUint(s, 10, 32)
-		if err != nil || x < 1 || x > 1024 {
-			fmt.Fprintf(os.Stderr,
-				"%s must be a small positive integer\n", s)
-			flag.Usage()
-			os.Exit(2)
+		x, err := strconv.ParseUint(s, 10, 16)
+		if err == nil && x > 0 {
+			t = int(x)
+			break
 		}
-		t = int(x)
+		fmt.Fprintf(os.Stderr, "not a small positive integer: %s\n", s)
+		fallthrough
 	default:
 		flag.Usage()
 		os.Exit(2)
 	}
-	return e, t
+	return
 }
 
 func main() {
