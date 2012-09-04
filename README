@@ -1,0 +1,4 @@
+Diceware8k / base64 / hex password generator
+
+It's only as good as the Go package rand.  On Unix it reads from
+/dev/urandom, which isn't bad.
